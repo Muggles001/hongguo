@@ -1,0 +1,57 @@
+name: Build macOS
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-14 # M系列芯片用 macos-14 (arm64)，Intel芯片可改为 macos-13 (x86_64)
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.1'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.8'
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: |
+          flutter config --enable-macos-desktop
+          flutter pub get --enforce-lockfile
+
+      - name: Build macOS (红果鉴 & 真果鉴)
+        run: |
+          python3 scripts/build_macos.py
+          python3 scripts/build_macos.py --all-sources
+
+      - name: Fallback manual package if needed
+        if: always()
+        run: |
+          mkdir -p artifacts_out
+          if [ -d "dist/macos" ]; then cp -R dist/macos/* artifacts_out/ || true; fi
+          if [ -d "build/macos/Build/Products/Release" ]; then
+            cd build/macos/Build/Products/Release
+            for app in *.app; do
+              [ -e "$app" ] || continue
+              ditto -c -k --sequesterRsrc --keepParent "$app" "${GITHUB_WORKSPACE}/artifacts_out/${app%.app}-macos.zip"
+            done
+          fi
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: hongguo-macos-build
+          path: artifacts_out/
